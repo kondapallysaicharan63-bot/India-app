@@ -405,4 +405,4 @@ for K in Ks:
 info("Torque expression TzA_pen uses (x+pin_x) but (y-pin_y): consistent only if pin_x stores +|x_A| "
      "(1.90) and pin_y stores the signed -6.85. Verify the B-leaflet expression uses (x-pin_x). UNVERIFIED "
      "(script not available here).")
-print("\nEnd of checks.")
+print("\nEnd of Round-1 checks.")
