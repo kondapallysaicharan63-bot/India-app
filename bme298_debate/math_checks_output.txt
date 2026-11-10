@@ -1,0 +1,232 @@
+Assumptions: rho=1060.0 kg/m3, mu=0.0035 Pa s, nu=3.302e-06 m2/s, h_gap=50 um
+
+================================================================================================
+C1  Penalization: Brinkman layer sqrt(K), penalty time scale tau = rho K / mu, ratio to gap
+================================================================================================
+    K [m2]  sqrt(K) [um]  sqrtK/h_gap    tau [s]
+     1e-11          3.16        0.063   3.03e-06
+     1e-10         10.00        0.200   3.03e-05
+     3e-10         17.32        0.346   9.09e-05
+     1e-09         31.62        0.632   3.03e-04
+  --> PASS: tau(K=1e-11) = 3.0 us matches handoff '~3 us'; observed frozen step 8.5e-6 s = 2.8 tau (step locked to penalty scale).
+  --> PASS: sqrt(1e-9) = 31.6 um, i.e. 0.63 of the 50 um gap (handoff 'comparable to gap' is correct -- and that is the problem, see C3).
+
+================================================================================================
+C2  Penalization: leaflet thickness from CAD volume, Darcy leakage through the ghost leaflet
+================================================================================================
+  t = 0.6 mm -> planform A = V/t =  347.5 mm2
+  t = 0.7 mm -> planform A = V/t =  297.9 mm2
+  t = 0.8 mm -> planform A = V/t =  260.6 mm2
+  half-disk R=10.8 mm: A = 183.2 mm2 -> t = V/A = 1.14 mm
+  --> INFO: CAD volume + half-disk planform implies t ~1.1 mm; 0.6-0.8 mm implies A = 260-350 mm2 (> half-disk). Use t = 0.7 mm as nominal, 1.1 mm as upper bound. Leakage scales as 1/t.
+
+  Darcy leakage u = K dp / (mu t), t = 0.7 mm (in parentheses: t = 1.1 mm)
+                                                     case  dp[Pa]           K=1e-11           K=1e-10           K=3e-10           K=1e-09
+  leaflet-normal dp at peak systole (from torque, see below)     140 0.000571(0.000364)  0.00571(0.00364)    0.0171(0.0109)    0.0571(0.0364)  m/s
+                            systolic transvalvular 5 mmHg     667  0.00272(0.00173)    0.0272(0.0173)    0.0816(0.0519)     0.272( 0.173)  m/s
+                           systolic transvalvular 10 mmHg    1333  0.00544(0.00346)    0.0544(0.0346)     0.163( 0.104)     0.544( 0.346)  m/s
+                                  diastole/closed 80 mmHg   10666    0.0435(0.0277)     0.435( 0.277)      1.31( 0.831)      4.35(  2.77)  m/s
+                                 diastole/closed 100 mmHg   13332    0.0544(0.0346)     0.544( 0.346)      1.63(  1.04)      5.44(  3.46)  m/s
+
+  Leaflet-normal dp at 70 deg estimated from T = dp*A*r_c (A=298 mm2, r_c=5 mm): 142 Pa
+  closed valve, 100 mmHg, both leaflets, K=1e-11: leak Q =     1.95 L/min
+  closed valve, 100 mmHg, both leaflets, K=1e-10: leak Q =    19.45 L/min
+  closed valve, 100 mmHg, both leaflets, K=3e-10: leak Q =    58.35 L/min
+  closed valve, 100 mmHg, both leaflets, K=1e-09: leak Q =   194.50 L/min
+  K needed for Darcy leak <= 1 cm/s at 100 mmHg (t=0.7 mm): K <= 1.8e-12 m2 -> tau = 5.6e-07 s, sqrt(K) = 1.36 um
+  --> FLAG: K=1e-9 is acceptable only for the OPEN leaflet (leak ~6 cm/s at ~1 mmHg normal load, a few % of bulk velocity -- consistent with the -8.6% torque deficit). For closure/diastole (80-100 mmHg) the ghost leaflet leaks 4-6 m/s (K=1e-9) or 0.04-0.05 m/s even at K=1e-11 (~2 L/min through both leaflets): a closed ghost valve is not closed; K<=~2e-12 needed (tau ~0.6 us). Diastolic hinge leakage -- the clinically relevant hinge flow -- cannot be done with O1/O2 at feasible K.
+
+================================================================================================
+C3  Penalization next to the 50 um gap: 1D slot flux with one Brinkman wall (exact solution)
+================================================================================================
+         K  sqrtK/h  Q/Q_true  WSS_housing/true
+     1e-12    0.020     1.064             1.020
+     1e-11    0.063     1.223             1.067
+     1e-10    0.200     1.884             1.233
+     3e-10    0.346     2.713             1.436
+     1e-09    0.632     3.926             1.877
+  --> FLAG: with K=1e-9 the penalized leaflet acts as a slip wall (slip length ~sqrt(K)=32 um): the gap flux is ~3.9x and housing WSS ~1.9x the no-slip value (K=1e-10: 1.9x / 1.2x; K=1e-11: 1.2x / 1.07x). Need K<=1e-12 for ~6% flux error. => O2 (ghost alone) cannot resolve the hinge gap; O1 must take gap flow from the film, not the 3D ghost.
+
+================================================================================================
+C4  K-study plan: error ~ sqrt(K)? Richardson in sqrt(K), 3 points, runtime extrapolation
+================================================================================================
+  sqrt(K) = [31.6227766  17.32050808 10.        ] um; ratios 1.826, 1.732 (non-constant -> use generalized formula)
+  synthetic T(K) = [0.201115   0.20590236 0.20835273]  (T0 = 0.2117, -5% at 1e-9)
+  observed order (exact data) p = 1.000; 2-pt Richardson p=1 on finest pair: 0.2117
+  with +/-0.4% noise: T = [0.201115   0.20670236 0.20755273]; observed p = 3.07; p=1 extrapolation = 0.2087
+  --> FLAG: 3 points determine (T0, c, p) exactly -> zero residual, no check of the asymptotic range. Fix p=1 (theory for Brinkman velocity error ~ sqrt(K): needs literature check) and use the 3rd point as a consistency check. Noise of +/-0.4% already moves observed p from 1.0 to ~2-3.
+  mean element volume 0.0265 mm3 -> regular-tet edge 0.608 mm
+  --> FLAG: sqrt(K) (10-32 um) << local element size (tens-hundreds of um): the Brinkman layer is unresolved, interface error is O(h_mesh) not O(sqrt(K)); a K study on a fixed mesh will plateau. K study must be coupled with local refinement (h_mesh <~ sqrt(K)) or reported as K-sensitivity only.
+  wall time: K=1e-9 1.33 h; K=1e-11 extrapolated 24.2 h -> wall ~ K^-0.63
+    predicted K=3e-10: 2.8 h (ASSUMPTION: power-law between the 2 runs)
+    predicted K=1e-10: 5.7 h (ASSUMPTION: power-law between the 2 runs)
+  --> INFO: K=3e-10 and 1e-10 fit in one night each on the desktop.
+
+================================================================================================
+C5  Halo: VA = 299.3 / VB = 300.1 vs 208.5 mm3 -> equivalent halo thickness vs mesh size
+================================================================================================
+  A: excess 90.8 mm3 = 43.5%
+  B: excess 91.6 mm3 = 43.9%
+  t=0.7 mm: wetted area ~596 mm2 -> halo thickness 152 um per face
+  t=1.1 mm: wetted area ~379 mm2 -> halo thickness 240 um per face
+  --> PASS: +43.5%/+43.9% matches '+44%'. Halo ~150-240 um per face = ~3-5 gap widths, i.e. ~1/4-2/5 of a mean element (0.61 mm): consistent with nearest-point snapping over one element layer. Halo inflates thickness by ~44% -> plausible cause of FyA +25.6% (form drag on thicker plate). With a halo of 3-5 gap widths, the ghost leaflet in v22 FILLS the 50 um hinge gap: all K=1e-9 results near the hinge are meaningless until FixChi is run.
+  volume bookkeeping: 53832.7 + 2*208.5 = 54249.7 mm3 (handoff 54,249.7)
+  DOF/element = 0.768; P1+P1 NS (4 DOF/node), tets ~5.5-6 el/node -> 0.67-0.73 DOF/el
+  --> PASS: volume and DOF counts are internally consistent.
+
+================================================================================================
+C6  Body-fitted torque vs angle: trend, fit, A/B symmetry
+================================================================================================
+  TzA: linear slope -0.0099/deg R2=0.9993, zero at 91.3 deg; exp decay -7.48%/deg; monotonic=True
+  TzB: linear slope -0.0098/deg R2=0.9999, zero at 91.4 deg; exp decay -7.52%/deg; monotonic=True
+  FyA: linear slope -2.5823/deg R2=0.9900, zero at 88.5 deg; exp decay -9.40%/deg; monotonic=True
+  A/B asymmetry %: {np.int64(70): np.float64(1.04), np.int64(75): np.float64(0.62), np.int64(80): np.float64(1.8), np.int64(84): np.float64(2.74)}
+  84 deg with 2-sig-fig rounding: asymmetry could be 1.4%..4.1%
+  --> FLAG: max A/B asymmetry is 2.7% at 84 deg, not 'within 2.2%' (2.2% fits 70-80 only); torques at 75-84 deg are reported to 2 sig figs, too coarse for a 2% symmetry or 5% bias gate. Report 4 sig figs. Torque decays ~8%/deg; extrapolated to 85 deg ~0.064-0.066 mN m (still opening).
+
+================================================================================================
+C7  Statistics with n = 4 angles x 2 leaflets: what Bland-Altman / regression / paired t can detect
+================================================================================================
+  ghost = 0.914 x body-fitted (8.6% bias everywhere): regression R2 = 1.0000, slope 0.914
+  --> FLAG: R2 > 0.95 gate passes even with a large systematic bias; use slope/intercept with CI and max |%diff| instead.
+    n  sd of %diff  MDE (80% power)  95% CI half-width
+    4          0.5            1.06%              0.80%
+    4          1.0            2.13%              1.59%
+    4          2.0            4.26%              3.18%
+    8          0.5            0.58%              0.42%
+    8          1.0            1.16%              0.84%
+    8          2.0            2.31%              1.67%
+  n=8 treats A and B as independent; they are mirror images (r~1), so effective n ~ 4.
+  BA n=4, sd=1.0%: LoA = bias +/- 1.96%, each LoA uncertain by +/-2.76%
+  BA n=4, sd=2.0%: LoA = bias +/- 3.92%, each LoA uncertain by +/-5.51%
+  --> FLAG: paired t answers 'is bias != 0' (with a deterministic model error it eventually always is), not 'is |bias| < 5%'. Use an equivalence test (TOST) or simply the CI of the bias vs the 5% margin; with n=4 and sd~1% the 95% CI half-width is ~1.6%, so bias <= ~3.4% is needed to demonstrate <5%. Better: ASME V&V-20-style comparison E = S-D vs u_val from GCI (needs literature check).
+  BH (q=0.05) example with hypothetical p-values:
+    rank 1: TzA bias  p=0.004 crit=0.0125 -> reject
+    rank 2: TzB bias  p=0.019 crit=0.0250 -> reject
+    rank 3: FyA bias  p=0.030 crit=0.0375 -> reject
+    rank 4: slope!=1  p=0.210 crit=0.0500 -> keep
+  --> INFO: BH is mechanically fine but with 3-4 tests on the same 4 angles it adds little; report it only if the committee asks for p-values.
+
+================================================================================================
+C8  Lubrication (Reynolds film) validity: eps, Re_gap, eps*Re, wall shear, unsteadiness
+================================================================================================
+  eps = h/L: L=1.0 mm -> 0.0500, L=1.5 mm -> 0.0333, L=2.0 mm -> 0.0250
+  --> PASS: eps = 0.025 corresponds to L = 2 mm.
+  handoff systole: eps*Re=0.03 -> Re=1.2 -> U=0.079 m/s
+  handoff closure: eps*Re=0.24 -> Re=9.6 -> U=0.634 m/s
+  closure Couette velocity of ear surface:
+    Tc=   2 ms omega= 130.9 rad/s r=2.0 mm U=0.262 m/s Re=3.96 Couette tau=mu U/h= 18.3 Pa
+    Tc=   2 ms omega= 130.9 rad/s r=2.2 mm U=0.288 m/s Re=4.36 Couette tau=mu U/h= 20.2 Pa
+    Tc=   5 ms omega=  52.4 rad/s r=2.0 mm U=0.105 m/s Re=1.59 Couette tau=mu U/h=  7.3 Pa
+    Tc=   5 ms omega=  52.4 rad/s r=2.2 mm U=0.115 m/s Re=1.74 Couette tau=mu U/h=  8.1 Pa
+    Tc=  10 ms omega=  26.2 rad/s r=2.0 mm U=0.052 m/s Re=0.79 Couette tau=mu U/h=  3.7 Pa
+    Tc=  10 ms omega=  26.2 rad/s r=2.2 mm U=0.058 m/s Re=0.87 Couette tau=mu U/h=  4.0 Pa
+  pressure-driven (Poiseuille) part across the hinge:
+    dp=  5 mmHg L=1.0 mm: dp/ds=6.67e+05 Pa/m  tau_P=(h/2)dp/ds=  16.7 Pa  Umean=0.040 m/s Re= 0.60 eps*Re=0.030
+    dp=  5 mmHg L=1.5 mm: dp/ds=4.44e+05 Pa/m  tau_P=(h/2)dp/ds=  11.1 Pa  Umean=0.026 m/s Re= 0.40 eps*Re=0.013
+    dp=  5 mmHg L=2.0 mm: dp/ds=3.33e+05 Pa/m  tau_P=(h/2)dp/ds=   8.3 Pa  Umean=0.020 m/s Re= 0.30 eps*Re=0.008
+    dp= 10 mmHg L=1.0 mm: dp/ds=1.33e+06 Pa/m  tau_P=(h/2)dp/ds=  33.3 Pa  Umean=0.079 m/s Re= 1.20 eps*Re=0.060
+    dp= 10 mmHg L=1.5 mm: dp/ds=8.89e+05 Pa/m  tau_P=(h/2)dp/ds=  22.2 Pa  Umean=0.053 m/s Re= 0.80 eps*Re=0.027
+    dp= 10 mmHg L=2.0 mm: dp/ds=6.67e+05 Pa/m  tau_P=(h/2)dp/ds=  16.7 Pa  Umean=0.040 m/s Re= 0.60 eps*Re=0.015
+    dp= 80 mmHg L=1.0 mm: dp/ds=1.07e+07 Pa/m  tau_P=(h/2)dp/ds= 266.6 Pa  Umean=0.635 m/s Re= 9.61 eps*Re=0.481
+    dp= 80 mmHg L=1.5 mm: dp/ds=7.11e+06 Pa/m  tau_P=(h/2)dp/ds= 177.8 Pa  Umean=0.423 m/s Re= 6.41 eps*Re=0.214
+    dp= 80 mmHg L=2.0 mm: dp/ds=5.33e+06 Pa/m  tau_P=(h/2)dp/ds= 133.3 Pa  Umean=0.317 m/s Re= 4.81 eps*Re=0.120
+    dp=100 mmHg L=1.0 mm: dp/ds=1.33e+07 Pa/m  tau_P=(h/2)dp/ds= 333.3 Pa  Umean=0.794 m/s Re=12.02 eps*Re=0.601
+    dp=100 mmHg L=1.5 mm: dp/ds=8.89e+06 Pa/m  tau_P=(h/2)dp/ds= 222.2 Pa  Umean=0.529 m/s Re= 8.01 eps*Re=0.267
+    dp=100 mmHg L=2.0 mm: dp/ds=6.67e+06 Pa/m  tau_P=(h/2)dp/ds= 166.7 Pa  Umean=0.397 m/s Re= 6.01 eps*Re=0.150
+  --> PASS: '~270 Pa at closure' is reproduced only as the POISEUILLE term with 80-100 mmHg across L ~1-1.5 mm (167-333 Pa); the Couette term from ear motion is only 5-40 Pa. Note: 80-100 mmHg is the CLOSED-valve (diastolic) load; during the closing swing the back pressure is a few mmHg, so 270 Pa belongs to diastolic leakage, not to the closing motion itself (except water-hammer transients).
+  --> PASS: eps*Re = 0.01-0.08 in systole and 0.12-0.60 in diastolic leakage (L=2..1 mm): film valid in systole, marginal (O(eps*Re) ~10-60% inertia correction) for 80-100 mmHg leakage, esp. at mouths.
+  unsteady film parameter h^2*omega/nu:
+    cardiac 72 bpm               omega=     7.5 1/s -> 0.0057
+    closure 10 ms                omega=   100.0 1/s -> 0.0757
+    closure 2 ms                 omega=   500.0 1/s -> 0.3786
+    impact/water-hammer 0.2 ms   omega=  5000.0 1/s -> 3.7857
+  --> INFO: Film is quasi-steady (<0.2) except at leaflet impact (sub-ms), where h^2*omega/nu ~ O(1): the Reynolds film needs a transient (dh/dt squeeze) term and is unreliable at impact.
+
+================================================================================================
+C9  ALE: hinge shear gamma = R dtheta / h_gap; end-face sliding; inversion angle; tip displacement
+================================================================================================
+  gamma = 0.67/deg requires R = 0.67*h/(1 deg) = 1.92 mm
+  --> PASS: R = 1.92 mm = ear radius ~2 mm (also |pivot x| = 1.90 mm). At the observed inversion site r = 2.1-2.3 mm gamma = 0.73-0.80 per deg.
+  r=2.1 mm: end-face slide 36.7 um/deg = 0.73 gap widths/deg
+  r=2.3 mm: end-face slide 40.1 um/deg = 0.80 gap widths/deg
+  angle at which a gap-spanning element of height h/n is sheared to gamma = 1 (45 deg skew),
+  if the whole slide is taken by that element (no smoothing):
+    n=1 r=2.1 mm -> 1.36 deg
+    n=1 r=2.3 mm -> 1.25 deg
+    n=2 r=2.1 mm -> 0.68 deg
+    n=2 r=2.3 mm -> 0.62 deg
+    n=3 r=2.1 mm -> 0.45 deg
+    n=3 r=2.3 mm -> 0.42 deg
+    n=4 r=2.1 mm -> 0.34 deg
+    n=4 r=2.3 mm -> 0.31 deg
+  observed history: Laplace 1.1, slip 2.3, Yeoh 3.1 deg; gamma at 3 deg, r=2.2 mm = 2.30
+  --> PASS: Laplace failure at 1.1 deg ~ gamma=1 over the full gap (h/r = 1.25-1.36 deg); Yeoh lasting to ~3 deg means the smoother spread the slide over ~2.3 gap widths. Note: uniform simple shear has det F = 1 and never inverts; inversion is created where a SLIDING face node meets a PINNED corner (du/dx < -1 inside one element). Remeshing at distortion 1.5 cannot cure this unless the remesh interval is < ~(h/n)/r = 0.3-0.65 deg at the end faces, i.e. >20-45 remeshes over 14 deg.
+  tip displacement 10.8 mm x 14 deg: arc 2.639 mm, chord 2.632 mm
+  --> PASS: 2.6 mm reproduced. FLAG-lite: 10.8 mm is the ear END-FACE z-coordinate (span direction); the in-plane pivot-to-tip radius must be read from the CAD (rotation is about z). If tip radius differs, expected displacement scales linearly.
+
+================================================================================================
+C10  ALE run timing: sim-seconds per wall hour and finish-time extrapolation
+================================================================================================
+  interval 1:  1.88 h, dt=0.0660 s -> 0.0350 s/h (0.49 deg/h); angle check 14*t=0.92 vs table 0.9
+  interval 2:  2.87 h, dt=0.0520 s -> 0.0181 s/h (0.25 deg/h); angle check 14*t=1.65 vs table 1.65
+  interval 3:  4.35 h, dt=0.0995 s -> 0.0229 s/h (0.32 deg/h); angle check 14*t=3.04 vs table 3.0
+  interval 4:  1.92 h, dt=0.1025 s -> 0.0535 s/h (0.75 deg/h); angle check 14*t=4.48 vs table 4.5
+  interval 5:  2.07 h, dt=0.0640 s -> 0.0310 s/h (0.43 deg/h); angle check 14*t=5.38 vs table 5.4
+  interval 6:  4.93 h, dt=0.1180 s -> 0.0239 s/h (0.33 deg/h); angle check 14*t=7.03 vs table 7.0
+  interval 7:  5.67 h, dt=0.1010 s -> 0.0178 s/h (0.25 deg/h); angle check 14*t=8.44 vs table 8.4
+  interval 8:  1.55 h, dt=0.0510 s -> 0.0329 s/h (0.46 deg/h); angle check 14*t=9.16 vs table 9.2
+  overall mean                     0.0259 s/h -> remaining  13.3 h -> finish Nov 10 11:27
+  last interval                    0.0329 s/h -> remaining  10.5 h -> finish Nov 10 08:37
+  slowest (out-of-core) interval   0.0178 s/h -> remaining  19.4 h -> finish Nov 10 17:31
+  mean of last 3                   0.0249 s/h -> remaining  13.9 h -> finish Nov 10 12:01
+  --> PASS: 65.4% done (handoff 66%); finish Nov 10 ~08:00-17:30, consistent with 'midday-evening'. The run has likely finished (or stalled) by the time this is read: check the Log.
+
+================================================================================================
+C11  GCI (Roache, 3 meshes, Fs = 1.25) -- function + worked example; 3D DOF/memory growth
+================================================================================================
+  example f=(0.2117,0.2152,0.2231), r=1.3: p=3.10, f_ext=0.2089, GCI_fine=1.64%, asymptotic ratio=0.984 (should be ~1)
+  example f=(0.2117,0.2152,0.2231), r=1.5: p=2.01, f_ext=0.2089, GCI_fine=1.64%, asymptotic ratio=0.984 (should be ~1)
+  --> INFO: 3D refinement ratio from element counts: r = (N_fine/N_coarse)^(1/3); Celik et al. recommend r >= 1.3 (needs literature check).
+  refining FROM the current 1.58 M DOF mesh (memory M = M0 (N/N0)^b, b ASSUMED 1.3-1.5):
+   M0=28.7 GB (current run fills the 28.7 GB box)
+    r=1.3: DOF   3.47 M  memory     80-    93 GB
+    r=1.5: DOF   5.33 M  memory    140-   178 GB
+    r=2.0: DOF  12.64 M  memory    428-   649 GB
+   M0=15 GB (optimistic)
+    r=1.3: DOF   3.47 M  memory     42-    49 GB
+    r=1.5: DOF   5.33 M  memory     73-    93 GB
+    r=2.0: DOF  12.64 M  memory    224-   339 GB
+  COARSENING from 1.58 M instead (current mesh = fine grid):
+    r=1.3: medium 0.72 M DOF, coarse 0.33 M DOF
+    r=1.5: medium 0.47 M DOF, coarse 0.14 M DOF
+  --> FLAG: any refined grid (r>=1.3 -> 3.5 M DOF, 2.2x) exceeds 28-32 GB with a direct solver under either calibration; the GCI must use the current mesh as the FINEST grid (coarsen r=1.3: 0.72 M, 0.33 M DOF) or run on HPC / with an iterative solver. But the coarse grid must still put >=2-3 elements across the 50 um gap, so global coarsening by r^2=1.69 may break the gap: refine/coarsen the bulk and the gap separately and report two GCIs.
+
+================================================================================================
+C12  Added-mass ratio for two-way FSI (leaflet rotation)
+================================================================================================
+   c [mm] s_eff [mm]  I_a [kg m2]  I_a/I_s
+      8.0       13.0     1.24e-08     1.31
+      8.0       17.3     1.66e-08     1.74
+     10.0       13.0     3.03e-08     3.19
+     10.0       17.3     4.05e-08     4.26
+     11.0       13.0     4.44e-08     4.68
+     11.0       17.3     5.92e-08     6.24
+  consistency of I_s: m = 0.396 g (rho_s 1.9e3) -> radius of gyration 4.90 mm (plausible for pivot inside the leaflet)
+  --> FLAG: I_added/I_leaflet ~ 1.3-6 (>1; confinement in the housing raises it further): a plain partitioned (Dirichlet-Neumann) coupling of torque and angle is unstable without strong relaxation (Aitken) or an artificial added inertia ~I_a. COMSOL's fully-coupled rigid-rotation ODE in the same Newton system is monolithic and immune -- but in the ghost model the torque depends on chi via General Extrusion with NO d(chi)/d(theta) Jacobian, so O1/O2 two-way FSI is effectively partitioned w.r.t. the geometric coupling and will need the Phase E stabilization. Also: with a moving ghost leaflet the penalty integral misses the momentum of fluid inside chi; add -d/dt int(rho chi r x u) (Uhlmann-type correction, needs literature check) or the torque is biased by ~rho*V_leaf*r^2*alpha.
+  internal-fluid inertia rho_f V r_g^2 = 5.30e-09 kg m2 = 56% of I_s
+
+================================================================================================
+C13  Other numbers in the handoff
+================================================================================================
+  ghost vs BF: TzA -8.64% (claim -8.6), TzB -8.74% (claim -8.8), FyA 25.62% (claim +25.6)
+  --> PASS: TzB is -8.74% (handoff -8.8%, rounding).
+  ghost A/B symmetry: 1.14% (claim 1%)
+  ALE rotation 14 deg/s x 1 s = 14 deg -> 70+14 = 84 deg: never reaches the 85 deg stop (by design?)
+  K=1e-11: leaflet thickness/sqrt(K) = 221 (Darcy regime if >>1)
+  K=1e-10: leaflet thickness/sqrt(K) = 70 (Darcy regime if >>1)
+  K=3e-10: leaflet thickness/sqrt(K) = 40 (Darcy regime if >>1)
+  K=1e-09: leaflet thickness/sqrt(K) = 22 (Darcy regime if >>1)
+  --> INFO: Torque expression TzA_pen uses (x+pin_x) but (y-pin_y): consistent only if pin_x stores +|x_A| (1.90) and pin_y stores the signed -6.85. Verify the B-leaflet expression uses (x-pin_x). UNVERIFIED (script not available here).
+
+End of checks.
