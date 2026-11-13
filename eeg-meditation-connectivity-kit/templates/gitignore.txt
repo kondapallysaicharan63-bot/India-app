@@ -1,0 +1,25 @@
+# ---- Raw / processed EEG data (never commit) ----
+*.bdf
+*.mat
+*.set
+*.fdt
+*.csv
+*.zip
+
+# ---- Output and data folders ----
+results/
+results_clean/
+results_state/
+data/
+FULL_BACKUP/
+
+# ---- MATLAB / OS clutter ----
+*.asv
+*.m~
+*.mex*
+slprj/
+.DS_Store
+Thumbs.db
+
+# NOTE: .gitignore cannot filter by file size. Files >10 MB are blocked by
+# the pre-commit hook installed by setup (see .githooks/pre-commit).

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Block commits of data files or anything larger than 10 MB.
+limit=10485760
+fail=0
+for f in $(git diff --cached --name-only --diff-filter=ACM); do
+  [ -f "$f" ] || continue
+  size=$(wc -c < "$f" | tr -d ' ')
+  if [ "$size" -gt "$limit" ]; then
+    echo "BLOCKED (>10 MB): $f ($size bytes)"; fail=1
+  fi
+  case "$f" in
+    *.bdf|*.mat|*.set|*.fdt|*.csv|*.zip) echo "BLOCKED (data file): $f"; fail=1 ;;
+  esac
+done
+[ "$fail" -eq 0 ] || { echo "Commit aborted."; exit 1; }
